@@ -33,6 +33,12 @@ struct State {
     uniform_buffer: wgpu::Buffer,
     uniform_bind_group: wgpu::BindGroup,
     num_indices: u32,
+    // Background fire quad
+    background_pipeline: wgpu::RenderPipeline,
+    background_vertex_buffer: wgpu::Buffer,
+    background_index_buffer: wgpu::Buffer,
+    background_uniform_buffer: wgpu::Buffer,
+    background_bind_group: wgpu::BindGroup,
     rotation: (f32, f32), // (x_rotation, y_rotation)
     base_color: [f32; 4],
     start_time: std::time::Instant,
@@ -121,10 +127,16 @@ impl State {
             label: Some("uniform_bind_group"),
         });
         
-        // Load shader
+        // Load shader for model (solid lambert)
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Solid Lambert Shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shaders/solid_lambert.wgsl").into()),
+        });
+        
+        // Load fire shader for background
+        let fire_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Fire Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/fire.wgsl").into()),
         });
         
         // Create render pipeline layout
@@ -178,6 +190,86 @@ impl State {
             multiview_mask: Default::default(),
             cache: None,
         });
+        
+        // Create fullscreen quad vertices for background fire effect
+        let background_vertices = vec![
+            Vertex { position: [-1.0, -1.0, 0.0], normal: [0.0, 0.0, 1.0] }, // Bottom-left
+            Vertex { position: [1.0, -1.0, 0.0], normal: [0.0, 0.0, 1.0] },  // Bottom-right
+            Vertex { position: [1.0, 1.0, 0.0], normal: [0.0, 0.0, 1.0] },   // Top-right
+            Vertex { position: [-1.0, 1.0, 0.0], normal: [0.0, 0.0, 1.0] },  // Top-left
+        ];
+        let background_indices: Vec<u16> = vec![0, 1, 2, 0, 2, 3];
+        
+        // Create background vertex buffer
+        let background_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Background Vertex Buffer"),
+            contents: bytemuck::cast_slice(&background_vertices),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+        
+        // Create background index buffer
+        let background_index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Background Index Buffer"),
+            contents: bytemuck::cast_slice(&background_indices),
+            usage: wgpu::BufferUsages::INDEX,
+        });
+        
+        // Create background uniform buffer
+        let background_uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Background Uniform Buffer"),
+            size: std::mem::size_of::<Uniforms>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        
+        // Create background bind group
+        let background_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: background_uniform_buffer.as_entire_binding(),
+            }],
+            label: Some("background_bind_group"),
+        });
+        
+        // Create background render pipeline with fire shader
+        let background_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Background Fire Pipeline"),
+            layout: Some(&render_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &fire_shader,
+                entry_point: Some("vs_main"),
+                buffers: &[Vertex::desc()],
+                compilation_options: Default::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &fire_shader,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: surface_format,
+                    blend: Some(wgpu::BlendState::REPLACE),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: Default::default(),
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: None,
+                polygon_mode: wgpu::PolygonMode::Fill,
+                unclipped_depth: false,
+                conservative: false,
+            },
+            depth_stencil: None, // Background doesn't need depth testing
+            multisample: wgpu::MultisampleState {
+                count: 1,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
+            multiview_mask: Default::default(),
+            cache: None,
+        });
 
         let state = State {
             window,
@@ -192,6 +284,11 @@ impl State {
             uniform_buffer,
             uniform_bind_group,
             num_indices,
+            background_pipeline,
+            background_vertex_buffer,
+            background_index_buffer,
+            background_uniform_buffer,
+            background_bind_group,
             rotation: (0.0, 0.0),
             base_color,
             start_time: std::time::Instant::now(),
@@ -337,16 +434,55 @@ impl State {
         let depth_view = depth_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
         let mut encoder = self.device.create_command_encoder(&Default::default());
+        
+        // First pass: Render background fire effect
         {
-            let rainbow_color = self.get_rainbow_color();
-            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Wireframe Render Pass"),
+            // Use time to animate the fire effect
+            let time = self.start_time.elapsed().as_secs_f32();
+            // Encode time in the model matrix translation to pass to shader
+            let time_matrix = Mat4::from_translation(Vec3::new(time, time * 0.5, 0.0));
+            
+            let background_uniforms = Uniforms {
+                mvp_matrix: Mat4::IDENTITY.to_cols_array_2d(),
+                model_matrix: time_matrix.to_cols_array_2d(),
+                base_color: [1.0, 0.5, 0.0, 1.0], // Orange color base
+            };
+            self.queue.write_buffer(&self.background_uniform_buffer, 0, bytemuck::cast_slice(&[background_uniforms]));
+            
+            let mut background_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Background Fire Pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &texture_view,
                     depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(rainbow_color),
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            
+            background_pass.set_pipeline(&self.background_pipeline);
+            background_pass.set_bind_group(0, &self.background_bind_group, &[]);
+            background_pass.set_vertex_buffer(0, self.background_vertex_buffer.slice(..));
+            background_pass.set_index_buffer(self.background_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+            background_pass.draw_indexed(0..6, 0, 0..1);
+        }
+        
+        // Second pass: Render 3D model on top
+        {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Model Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &texture_view,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load, // Keep the background we just rendered
                         store: wgpu::StoreOp::Store,
                     },
                 })],

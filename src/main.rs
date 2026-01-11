@@ -208,7 +208,7 @@ impl State {
                      color[0], color[1], color[2], color[3]);
             color
         } else {
-            [0.8, 0.8, 0.8, 1.0] // Default gray
+            [0.5, 0.5, 0.5, 1.0] // Default gray
         };
         
         let mut vertices = Vec::new();

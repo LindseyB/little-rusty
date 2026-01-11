@@ -214,7 +214,11 @@ impl State {
     }
 
     fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
-        self.size = new_size;
+        // Ensure minimum size to prevent crashes
+        let width = new_size.width.max(800);
+        let height = new_size.height.max(600);
+        
+        self.size = winit::dpi::PhysicalSize::new(width, height);
 
         // reconfigure the surface
         self.configure_surface();
@@ -332,10 +336,14 @@ struct App {
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        // Create window object
+        // Create window object with minimum size constraint
         let window = Arc::new(
             event_loop
-            .create_window(Window::default_attributes().with_title("Little Rusty"))
+            .create_window(
+                Window::default_attributes()
+                    .with_title("Little Rusty")
+                    .with_min_inner_size(winit::dpi::LogicalSize::new(800, 600))
+            )
             .unwrap(),
         );
 

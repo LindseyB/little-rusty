@@ -1,5 +1,7 @@
+mod types;
+
 use std::sync::Arc;
-use bytemuck::{Pod, Zeroable};
+use types::{Vertex, Uniforms};
 use glam::{Mat4, Vec3};
 use wgpu::util::DeviceExt;
 
@@ -10,32 +12,7 @@ use winit::{
     window::{Window, WindowId},
 };
 
-#[repr(C)]
-#[derive(Copy, Clone, Debug, Pod, Zeroable)]
-struct Vertex {
-    position: [f32; 3],
-    normal: [f32; 3],
-}
 
-impl Vertex {
-    const ATTRIBS: [wgpu::VertexAttribute; 2] = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3];
-    
-    fn desc() -> wgpu::VertexBufferLayout<'static> {
-        wgpu::VertexBufferLayout {
-            array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
-            step_mode: wgpu::VertexStepMode::Vertex,
-            attributes: &Self::ATTRIBS,
-        }
-    }
-}
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug, Pod, Zeroable)]
-struct Uniforms {
-    mvp_matrix: [[f32; 4]; 4],
-    model_matrix: [[f32; 4]; 4],
-    base_color: [f32; 4],
-}
 
 struct State {
     window: Arc<Window>,
@@ -133,7 +110,7 @@ impl State {
         // Load shader
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Solid Lambert Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("solid_lambert.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/solid_lambert.wgsl").into()),
         });
         
         // Create render pipeline layout
@@ -521,21 +498,6 @@ impl ApplicationHandler for App {
             WindowEvent::CloseRequested => {
                 println!("The close button was pressed. Stopping 🛑");
                 event_loop.exit();
-            }
-            WindowEvent::KeyboardInput { event, .. } => {
-                if event.state == winit::event::ElementState::Pressed {
-                    match event.physical_key {
-                        winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::KeyQ) => {
-                            println!("Q pressed. Stopping 🛑");
-                            event_loop.exit();
-                        }
-                        winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::Escape) => {
-                            println!("Escape pressed. Stopping 🛑");
-                            event_loop.exit();
-                        }
-                        _ => (),
-                    }
-                }
             }
             WindowEvent::RedrawRequested => {
                 state.render();

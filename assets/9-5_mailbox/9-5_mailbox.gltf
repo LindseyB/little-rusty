@@ -1,0 +1,185 @@
+{
+  "asset": {
+    "generator": "glTF-Transform v4.2.1",
+    "version": "2.0"
+  },
+  "accessors": [
+    {
+      "type": "VEC3",
+      "componentType": 5126,
+      "count": 864,
+      "max": [
+        1.0000001192092896,
+        1.0000001192092896,
+        1.0000001192092896
+      ],
+      "min": [
+        -1.0000001192092896,
+        -1.0000001192092896,
+        -1.000000238418579
+      ],
+      "bufferView": 0,
+      "byteOffset": 0
+    },
+    {
+      "type": "VEC3",
+      "componentType": 5126,
+      "count": 864,
+      "bufferView": 0,
+      "byteOffset": 12
+    },
+    {
+      "type": "VEC2",
+      "componentType": 5126,
+      "count": 864,
+      "bufferView": 0,
+      "byteOffset": 24
+    },
+    {
+      "type": "SCALAR",
+      "componentType": 5125,
+      "count": 864,
+      "bufferView": 1,
+      "byteOffset": 0
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteOffset": 0,
+      "byteLength": 27648,
+      "byteStride": 32,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 27648,
+      "byteLength": 3456,
+      "target": 34963
+    }
+  ],
+  "buffers": [
+    {
+      "uri": "buffer.bin",
+      "byteLength": 31104
+    }
+  ],
+  "materials": [
+    {
+      "name": "Material",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          0.04373428598046303,
+          0.05286135897040367,
+          0.11953996121883392,
+          1
+        ],
+        "roughnessFactor": 0.5,
+        "metallicFactor": 0
+      }
+    }
+  ],
+  "meshes": [
+    {
+      "name": "Cube",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "NORMAL": 1,
+            "TEXCOORD_0": 2
+          },
+          "mode": 4,
+          "material": 0,
+          "indices": 3
+        }
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "name": "RootNode",
+      "children": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "name": "Cube",
+      "extras": {
+        "UserProperties": "",
+        "IsNull": false,
+        "DefaultAttributeIndex": 0,
+        "InheritType": 1
+      },
+      "rotation": [
+        -0.707106723585384,
+        0,
+        0,
+        0.7071068387877064
+      ],
+      "scale": [
+        -79.3027114868164,
+        74.92932891845803,
+        179.5426788330102
+      ],
+      "mesh": 0
+    },
+    {
+      "name": "Empty",
+      "extras": {
+        "UserProperties": "",
+        "IsNull": true,
+        "DefaultAttributeIndex": 0,
+        "InheritType": 1
+      },
+      "translation": [
+        -221.07679748535156,
+        92.73829650878906,
+        164.4600372314453
+      ],
+      "rotation": [
+        1.5454314356882802e-8,
+        0.7071067123471565,
+        -1.545431134781787e-8,
+        0.7071068500259314
+      ],
+      "scale": [
+        100.00000000000189,
+        100.00000000000009,
+        100.000000000002
+      ]
+    },
+    {
+      "name": "Empty.001",
+      "extras": {
+        "UserProperties": "",
+        "IsNull": true,
+        "DefaultAttributeIndex": 0,
+        "InheritType": 1
+      },
+      "translation": [
+        10.727677345275879,
+        -1.9443005323410034,
+        -656.102783203125
+      ],
+      "scale": [
+        110.12556457519531,
+        110.12556457519531,
+        103.71931457519531
+      ]
+    }
+  ],
+  "scenes": [
+    {
+      "nodes": [
+        0
+      ]
+    }
+  ],
+  "scene": 0,
+  "extensionsUsed": [
+    "KHR_materials_volume"
+  ]
+}

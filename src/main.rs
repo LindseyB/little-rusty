@@ -14,10 +14,11 @@ use winit::{
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
 struct Vertex {
     position: [f32; 3],
+    normal: [f32; 3],
 }
 
 impl Vertex {
-    const ATTRIBS: [wgpu::VertexAttribute; 1] = wgpu::vertex_attr_array![0 => Float32x3];
+    const ATTRIBS: [wgpu::VertexAttribute; 2] = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3];
     
     fn desc() -> wgpu::VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {
@@ -32,6 +33,8 @@ impl Vertex {
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
 struct Uniforms {
     mvp_matrix: [[f32; 4]; 4],
+    model_matrix: [[f32; 4]; 4],
+    base_color: [f32; 4],
 }
 
 struct State {
@@ -47,6 +50,8 @@ struct State {
     uniform_buffer: wgpu::Buffer,
     uniform_bind_group: wgpu::BindGroup,
     num_indices: u32,
+    rotation: (f32, f32), // (x_rotation, y_rotation)
+    base_color: [f32; 4],
 }
 
 impl State {
@@ -73,8 +78,8 @@ impl State {
         let cap = surface.get_capabilities(&adapter);
         let surface_format = cap.formats[0];
 
-        // Create a simple cube for now instead of loading FBX
-        let (vertices, indices) = Self::create_cube();
+        // Load glTF file 
+        let (vertices, indices, base_color) = Self::load_gltf("assets/9-5_mailbox/9-5_mailbox.gltf");
         
         // Create vertex buffer
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -104,7 +109,7 @@ impl State {
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             entries: &[wgpu::BindGroupLayoutEntry {
                 binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX,
+                visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
                 ty: wgpu::BindingType::Buffer {
                     ty: wgpu::BufferBindingType::Uniform,
                     has_dynamic_offset: false,
@@ -127,8 +132,8 @@ impl State {
         
         // Load shader
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Wireframe Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("wireframe.wgsl").into()),
+            label: Some("Solid Lambert Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("solid_lambert.wgsl").into()),
         });
         
         // Create render pipeline layout
@@ -138,9 +143,9 @@ impl State {
             immediate_size: 0,
         });
         
-        // Create render pipeline for wireframe
+        // Create render pipeline for solid rendering
         let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("Wireframe Render Pipeline"),
+            label: Some("Solid Render Pipeline"),
             layout: Some(&render_pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
@@ -159,11 +164,11 @@ impl State {
                 compilation_options: Default::default(),
             }),
             primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::LineList, // Wireframe mode
+                topology: wgpu::PrimitiveTopology::TriangleList,
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Ccw,
-                cull_mode: None, // Don't cull for wireframe
-                polygon_mode: wgpu::PolygonMode::Line,
+                cull_mode: None,
+                polygon_mode: wgpu::PolygonMode::Fill,
                 unclipped_depth: false,
                 conservative: false,
             },
@@ -196,6 +201,8 @@ impl State {
             uniform_buffer,
             uniform_bind_group,
             num_indices,
+            rotation: (0.0, 0.0),
+            base_color,
         };
 
         // Configure surface for the first time
@@ -204,31 +211,151 @@ impl State {
         state
     }
     
-    fn create_cube() -> (Vec<Vertex>, Vec<u16>) {
-        // Simple cube vertices
-        let vertices = vec![
-            Vertex { position: [-1.0, -1.0,  1.0] },
-            Vertex { position: [ 1.0, -1.0,  1.0] },
-            Vertex { position: [ 1.0,  1.0,  1.0] },
-            Vertex { position: [-1.0,  1.0,  1.0] },
-            Vertex { position: [-1.0, -1.0, -1.0] },
-            Vertex { position: [ 1.0, -1.0, -1.0] },
-            Vertex { position: [ 1.0,  1.0, -1.0] },
-            Vertex { position: [-1.0,  1.0, -1.0] },
-        ];
-
-        // Wireframe indices (edges of the cube)
-        let indices = vec![
-            // Front face edges
-            0, 1,  1, 2,  2, 3,  3, 0,
-            // Back face edges  
-            4, 5,  5, 6,  6, 7,  7, 4,
-            // Connecting edges
-            0, 4,  1, 5,  2, 6,  3, 7,
-        ];
-
-        println!("Created cube: {} vertices, {} line indices", vertices.len(), indices.len());
+    fn load_gltf(path: &str) -> (Vec<Vertex>, Vec<u16>, [f32; 4]) {
+        // Try to load the glTF file with proper error handling
+        let (gltf, buffers, _images) = match gltf::import(path) {
+            Ok(data) => data,
+            Err(e) => {
+                println!("Failed to load glTF file '{}': {}", path, e);
+                println!("Falling back to default cube");
+                let (vertices, indices) = Self::create_fallback_cube();
+                return (vertices, indices, [0.5, 0.5, 0.5, 1.0]);
+            }
+        };
         
+        // Get material color from first material
+        let base_color = if let Some(material) = gltf.materials().next() {
+            let pbr = material.pbr_metallic_roughness();
+            let color = pbr.base_color_factor();
+            println!("🪨 Using material color: [{:.3}, {:.3}, {:.3}, {:.3}]", 
+                     color[0], color[1], color[2], color[3]);
+            color
+        } else {
+            [0.8, 0.8, 0.8, 1.0] // Default gray
+        };
+        
+        let mut vertices = Vec::new();
+        let mut indices = Vec::new();
+
+        for mesh in gltf.meshes() {
+            for primitive in mesh.primitives() {
+                // Handle missing buffer data gracefully
+                let reader = primitive.reader(|buffer| {
+                    if buffer.index() < buffers.len() {
+                        Some(&buffers[buffer.index()])
+                    } else {
+                        None
+                    }
+                });
+                
+                // Read positions and normals
+                if let Some(positions) = reader.read_positions() {
+                    let normals = reader.read_normals();
+                    let vertex_offset = vertices.len() as u16;
+                    
+                    // Collect positions and normals
+                    let positions: Vec<[f32; 3]> = positions.collect();
+                    let normals: Vec<[f32; 3]> = if let Some(normals) = normals {
+                        normals.collect()
+                    } else {
+                        // Generate simple normals if not present (pointing up)
+                        vec![[0.0, 1.0, 0.0]; positions.len()]
+                    };
+                    
+                    // Add vertices with normals
+                    for (position, normal) in positions.iter().zip(normals.iter()) {
+                        vertices.push(Vertex {
+                            position: *position,
+                            normal: *normal,
+                        });
+                    }
+                    
+                    // Read indices and keep as triangles (no wireframe conversion)
+                    if let Some(indices_reader) = reader.read_indices() {
+                        let triangle_indices: Vec<u32> = indices_reader.into_u32().collect();
+                        
+                        // Add triangle indices directly
+                        for &index in triangle_indices.iter() {
+                            indices.push((index as u16) + vertex_offset);
+                        }
+                    }
+                } else {
+                    println!("Warning: Mesh primitive has no position data");
+                }
+            }
+        }
+
+        if vertices.is_empty() {
+            println!("No valid geometry found in glTF file, using fallback cube");
+            let (vertices, indices) = Self::create_fallback_cube();
+            return (vertices, indices, [0.5, 0.5, 0.5, 1.0]);
+        }
+
+        // Calculate model dimensions
+        let mut min_x = f32::INFINITY;
+        let mut max_x = f32::NEG_INFINITY;
+        let mut min_y = f32::INFINITY;
+        let mut max_y = f32::NEG_INFINITY;
+        let mut min_z = f32::INFINITY;
+        let mut max_z = f32::NEG_INFINITY;
+
+        for vertex in &vertices {
+            min_x = min_x.min(vertex.position[0]);
+            max_x = max_x.max(vertex.position[0]);
+            min_y = min_y.min(vertex.position[1]);
+            max_y = max_y.max(vertex.position[1]);
+            min_z = min_z.min(vertex.position[2]);
+            max_z = max_z.max(vertex.position[2]);
+        }
+
+        let width = max_x - min_x;
+        let height = max_y - min_y;
+        let depth = max_z - min_z;
+
+        println!("💾 Loaded glTF: {} vertices, {} triangle indices", vertices.len(), indices.len());
+        println!("📏 Model dimensions:");
+        println!("  Width (X): {:.4} (from {:.4} to {:.4})", width, min_x, max_x);
+        println!("  Height (Y): {:.4} (from {:.4} to {:.4})", height, min_y, max_y);
+        println!("  Depth (Z): {:.4} (from {:.4} to {:.4})", depth, min_z, max_z);
+        println!("  Center: ({:.4}, {:.4}, {:.4})", 
+                 (min_x + max_x) / 2.0, 
+                 (min_y + max_y) / 2.0, 
+                 (min_z + max_z) / 2.0);
+        
+        (vertices, indices, base_color)
+    }
+    
+    // safety cube!!! 🧊
+    fn create_fallback_cube() -> (Vec<Vertex>, Vec<u16>) {
+        let vertices = vec![
+            // Front face
+            Vertex { position: [-1.0, -1.0,  1.0], normal: [0.0, 0.0, 1.0] },
+            Vertex { position: [ 1.0, -1.0,  1.0], normal: [0.0, 0.0, 1.0] },
+            Vertex { position: [ 1.0,  1.0,  1.0], normal: [0.0, 0.0, 1.0] },
+            Vertex { position: [-1.0,  1.0,  1.0], normal: [0.0, 0.0, 1.0] },
+            // Back face
+            Vertex { position: [-1.0, -1.0, -1.0], normal: [0.0, 0.0, -1.0] },
+            Vertex { position: [ 1.0, -1.0, -1.0], normal: [0.0, 0.0, -1.0] },
+            Vertex { position: [ 1.0,  1.0, -1.0], normal: [0.0, 0.0, -1.0] },
+            Vertex { position: [-1.0,  1.0, -1.0], normal: [0.0, 0.0, -1.0] },
+        ];
+
+        let indices = vec![
+            // Front face
+            0, 1, 2,  2, 3, 0,
+            // Back face  
+            4, 6, 5,  6, 4, 7,
+            // Left face
+            4, 0, 3,  3, 7, 4,
+            // Right face
+            1, 5, 6,  6, 2, 1,
+            // Top face
+            3, 2, 6,  6, 7, 3,
+            // Bottom face
+            4, 5, 1,  1, 0, 4,
+        ];
+
+        println!("Using fallback cube: {} vertices, {} triangle indices", vertices.len(), indices.len());
         (vertices, indices)
     }
 
@@ -261,19 +388,37 @@ impl State {
     }
 
     fn render(&mut self) {
+        // Update rotation for animation
+        self.rotation.0 += 0.01; // Rotate around X axis
+        self.rotation.1 += 0.01; // Rotate around Y axis
+        
         // Update MVP matrix
         let aspect = self.size.width as f32 / self.size.height as f32;
-        let projection = Mat4::perspective_rh(45.0_f32.to_radians(), aspect, 0.1, 100.0);
+        let projection = Mat4::perspective_rh(45.0_f32.to_radians(), aspect, 0.1, 2000.0);
         let view = Mat4::look_at_rh(
-            Vec3::new(3.0, 3.0, 5.0), // Camera position
-            Vec3::new(0.0, 0.0, 0.0), // Look at origin
-            Vec3::new(0.0, 1.0, 0.0), // Up vector
+            Vec3::new(0.0, 0.0, 800.0), // Eye position - moved back along Z
+            Vec3::new(0.0, 0.0, 0.0),   // Look at center
+            Vec3::new(0.0, 1.0, 0.0),     // Up vector
         );
-        let model = Mat4::IDENTITY;
+        
+        // Apply correct scaling to match original FBX dimensions
+        // Original: X=158.61, Y=359.09, Z=149.86
+        // Trying different coordinate mapping - height (359.09) to Z axis
+        let scale = Mat4::from_scale(Vec3::new(
+            158.61 / 2.0,  // X scale factor: 79.305
+            149.86 / 2.0,  // Y scale factor: 74.93  
+            359.09 / 2.0   // Z scale factor (height): 179.545
+        ));
+        
+        let rotation_x = Mat4::from_rotation_x(self.rotation.0);
+        let rotation_y = Mat4::from_rotation_y(self.rotation.1);
+        let model = rotation_y * rotation_x * scale;
         let mvp = projection * view * model;
         
         let uniforms = Uniforms {
             mvp_matrix: mvp.to_cols_array_2d(),
+            model_matrix: model.to_cols_array_2d(),
+            base_color: self.base_color,
         };
         
         self.queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));
@@ -308,7 +453,6 @@ impl State {
         
         let depth_view = depth_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-        // Render wireframe
         let mut encoder = self.device.create_command_encoder(&Default::default());
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -375,7 +519,7 @@ impl ApplicationHandler for App {
         let state = self.state.as_mut().unwrap();
         match event {
             WindowEvent::CloseRequested => {
-                println!("The close button was pressed; stopping");
+                println!("The close button was pressed. Stopping 🛑");
                 event_loop.exit();
             }
             WindowEvent::RedrawRequested => {

@@ -1,11 +1,13 @@
 mod types;
 mod gltf_loader;
 mod input;
+mod audio;
 
 use std::sync::Arc;
 use types::{Vertex, Uniforms};
 use gltf_loader::GltfLoader;
 use input::InputHandler;
+use audio::AudioSystem;
 use glam::{Mat4, Vec3};
 use wgpu::util::DeviceExt;
 
@@ -34,6 +36,7 @@ struct State {
     rotation: (f32, f32), // (x_rotation, y_rotation)
     base_color: [f32; 4],
     start_time: std::time::Instant,
+    audio_system: AudioSystem,
 }
 
 impl State {
@@ -59,6 +62,12 @@ impl State {
         let surface = instance.create_surface(window.clone()).unwrap();
         let cap = surface.get_capabilities(&adapter);
         let surface_format = cap.formats[0];
+
+        // Initialize audio system 🎵
+        let mut audio_system = AudioSystem::new().expect("Failed to initialize audio system");
+        
+        // Set volume first
+        audio_system.set_volume(0.3); // 30% volume
 
         // Load glTF file 
         let (vertices, indices, base_color) = GltfLoader::load_gltf("assets/9-5_mailbox/9-5_mailbox.gltf");
@@ -186,12 +195,20 @@ impl State {
             rotation: (0.0, 0.0),
             base_color,
             start_time: std::time::Instant::now(),
+            audio_system,
         };
 
         // Configure surface for the first time
         state.configure_surface();
 
         state
+    }
+    
+    fn load_background_music(&mut self) {
+        // LET THE MUSIC PLAY! 🎶
+        if let Err(e) = self.audio_system.play_file_looped("assets/251461__joshuaempyre__arcade-music-loop.wav", 1.0) {
+            println!("⚠️ Note: Could not load music file: {} (this is normal if you don't have a music file)", e);
+        }
     }
     
     // Generate a rainbow color based on elapsed time 🌈
@@ -382,6 +399,11 @@ impl ApplicationHandler for App {
             window.clone(),
         ));
         self.state = Some(state);
+        
+        // Load background music after State is created
+        if let Some(state) = self.state.as_mut() {
+            state.load_background_music();
+        }
 
         window.request_redraw();
     }

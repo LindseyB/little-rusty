@@ -522,6 +522,21 @@ impl ApplicationHandler for App {
                 println!("The close button was pressed. Stopping 🛑");
                 event_loop.exit();
             }
+            WindowEvent::KeyboardInput { event, .. } => {
+                if event.state == winit::event::ElementState::Pressed {
+                    match event.physical_key {
+                        winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::KeyQ) => {
+                            println!("Q pressed. Stopping 🛑");
+                            event_loop.exit();
+                        }
+                        winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::Escape) => {
+                            println!("Escape pressed. Stopping 🛑");
+                            event_loop.exit();
+                        }
+                        _ => (),
+                    }
+                }
+            }
             WindowEvent::RedrawRequested => {
                 state.render();
                 // Emits a new redraw requested event.

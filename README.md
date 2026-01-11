@@ -24,6 +24,10 @@ cd little-rusty
 cargo run
 ```
 
+## Known Issues
+
+- If you resize the window to zero dimensions, the application may panic. Avoid resizing to zero.
+
 ---
 
 Made with ❤️ by Lindsey B

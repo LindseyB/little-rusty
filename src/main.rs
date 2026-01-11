@@ -33,6 +33,7 @@ struct State {
     num_indices: u32,
     rotation: (f32, f32), // (x_rotation, y_rotation)
     base_color: [f32; 4],
+    start_time: std::time::Instant,
 }
 
 impl State {
@@ -184,6 +185,7 @@ impl State {
             num_indices,
             rotation: (0.0, 0.0),
             base_color,
+            start_time: std::time::Instant::now(),
         };
 
         // Configure surface for the first time
@@ -192,6 +194,33 @@ impl State {
         state
     }
     
+    // Generate a rainbow color based on elapsed time 🌈
+    fn get_rainbow_color(&self) -> wgpu::Color {
+        let elapsed = self.start_time.elapsed().as_secs_f32();
+        let hue = (elapsed * 0.5) % 1.0; // Complete rainbow cycle every 2 seconds
+        
+        // Convert HSV to RGB (with S=1, V=1 for vibrant colors)
+        let c = 1.0;
+        let x = c * (1.0 - ((hue * 6.0) % 2.0 - 1.0).abs());
+        let m = 0.0;
+        
+        let (r, g, b) = match (hue * 6.0) as i32 {
+            0 => (c, x, 0.0),      // Red to Yellow
+            1 => (x, c, 0.0),      // Yellow to Green  
+            2 => (0.0, c, x),      // Green to Cyan
+            3 => (0.0, x, c),      // Cyan to Blue
+            4 => (x, 0.0, c),      // Blue to Magenta
+            _ => (c, 0.0, x),      // Magenta to Red
+        };
+        
+        wgpu::Color {
+            r: (r + m) as f64,
+            g: (g + m) as f64, 
+            b: (b + m) as f64,
+            a: 1.0,
+        }
+    }
+
     fn get_window(&self) -> &Window {
         &self.window
     }
@@ -292,6 +321,7 @@ impl State {
 
         let mut encoder = self.device.create_command_encoder(&Default::default());
         {
+            let rainbow_color = self.get_rainbow_color();
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Wireframe Render Pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -299,7 +329,7 @@ impl State {
                     depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        load: wgpu::LoadOp::Clear(rainbow_color),
                         store: wgpu::StoreOp::Store,
                     },
                 })],

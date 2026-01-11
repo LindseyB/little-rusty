@@ -4,6 +4,10 @@ A simple Rust application using WGPU for GPU-accelerated graphics rendering.
 
 ## Description
 
+Current state - I have no idea what I'm doing.
+
+https://github.com/user-attachments/assets/83fb44bb-e61b-4d85-aa19-9e23f34bc0b7
+
 ## Dependencies
 
 - **wgpu** - Modern graphics API abstraction layer

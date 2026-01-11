@@ -10,10 +10,20 @@ https://github.com/user-attachments/assets/83fb44bb-e61b-4d85-aa19-9e23f34bc0b7
 
 ## Dependencies
 
-- **wgpu** - Modern graphics API abstraction layer
-- **winit** - Cross-platform window creation and event handling
-- **pollster** - Async runtime for blocking on futures
-- **env_logger** - Logging implementation
+- **wgpu** (28.0.0) - Modern graphics API abstraction layer for GPU-accelerated rendering
+- **winit** (0.30.8) - Cross-platform window creation and event handling
+- **pollster** (0.4) - Async runtime for blocking on futures
+- **env_logger** (0.11) - Logging implementation for debug output
+- **bytemuck** (1.0) - Safe transmutation between plain data types
+- **glam** (0.29) - Linear algebra library for 3D mathematics
+- **gltf** (1.4) - glTF 3D model format loading and parsing
+- **image** (0.24) - Image processing and format support
+- **kira** (0.9) - Audio playback library with looping support
+
+## Important docs
+
+- [wgpu documentation](https://docs.rs/wgpu/latest/wgpu/)
+- [kira documentation](https://docs.rs/kira/latest/kira/)
 
 ## Building and Running
 

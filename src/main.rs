@@ -328,8 +328,9 @@ impl State {
 
     fn render(&mut self) {
         // Update particles
-        let dt = 1.0 / 60.0;
         let time = self.start_time.elapsed().as_secs_f32();
+        let dt = time - self.last_frame_time;
+        self.last_frame_time = time;
         self.particle_system.update(dt, time);
         // Update rotation for animation
         self.rotation.0 += 0.01; // Rotate around X axis

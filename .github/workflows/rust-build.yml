@@ -1,0 +1,22 @@
+name: Rust Build 🛠️
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout ✅
+        uses: actions/checkout@v4
+      - name: Set up Rust 💻
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache Cargo 📦
+        uses: Swatinem/rust-cache@v2
+      - name: Build 🔧
+        run: cargo build --verbose

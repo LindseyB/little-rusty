@@ -2,18 +2,18 @@ name: Rust Build 🛠️
 
 on:
   push:
-    branches: ["**"]
-  pull_request:
+    branches:
+      - main
 
 jobs:
   build:
     runs-on: windows-latest
     steps:
-      - name: Checkout
+      - name: Checkout ✅
         uses: actions/checkout@v4
-      - name: Set up Rust
+      - name: Set up Rust 💻
         uses: dtolnay/rust-toolchain@stable
-      - name: Cache Cargo
+      - name: Cache Cargo 📦
         uses: Swatinem/rust-cache@v2
-      - name: Build
+      - name: Build 🔧
         run: cargo build --verbose

@@ -1,9 +1,12 @@
 name: Rust Build 🛠️
 
 on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
   push:
-    branches:
-      - main
+    branches: [main]
+  workflow_dispatch:
 
 jobs:
   build:

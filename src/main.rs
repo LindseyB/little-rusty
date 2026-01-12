@@ -45,6 +45,7 @@ struct State {
     rotation: (f32, f32), // (x_rotation, y_rotation)
     base_color: [f32; 4],
     start_time: std::time::Instant,
+    last_frame_time: f32,
     audio_system: AudioSystem,
     // Particle system
     particle_system: ParticleSystem,
@@ -248,6 +249,7 @@ impl State {
             rotation: (0.0, 0.0),
             base_color,
             start_time: std::time::Instant::now(),
+            last_frame_time: 0.0,
             audio_system,
             particle_system,
         };
@@ -329,8 +331,14 @@ impl State {
     fn render(&mut self) {
         // Update particles
         let time = self.start_time.elapsed().as_secs_f32();
-        let dt = time - self.last_frame_time;
-        self.last_frame_time = time;
+        let mut dt = time - self.last_frame_time;
+        if self.last_frame_time == 0.0 {
+            // Avoid a large initial dt on the first frame
+            self.last_frame_time = time;
+            dt = 1.0 / 60.0;
+        } else {
+            self.last_frame_time = time;
+        }
         self.particle_system.update(dt, time);
         // Update rotation for animation
         self.rotation.0 += 0.01; // Rotate around X axis

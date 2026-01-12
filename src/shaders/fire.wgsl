@@ -38,104 +38,122 @@ fn vs_main(model: VertexInput) -> VertexOutput {
     return out;
 }
 
-// Pseudo-random number generator using hash function
-// Takes a 2D coordinate and returns a random value between 0 and 1
+// Pseudo-random function
 fn rand(n: vec2f) -> f32 {
     return fract(sin(dot(n, vec2f(12.9898, 78.233))) * 43758.5453);
 }
 
-// Perlin-style noise function
-// Creates smooth noise by interpolating random values at grid points
-fn noise(n: vec2f) -> f32 {
-    const d = vec2f(0.0, 1.0);
-    let b = floor(n);  // Grid cell coordinates
-    var f = smoothstep(vec2f(0.0), vec2f(1.0), fract(n));  // Smooth interpolation weights
-    // Bilinear interpolation of random values at four corners
-    return mix(mix(rand(b), rand(b + d.yx), f.x),
-               mix(rand(b + d.xy), rand(b + d.yy), f.x), f.y);
+// Hash function - returns vec2 between -1.0 and 1.0
+fn hash(p: vec2f) -> vec2f {
+    let p2 = vec2f(
+        dot(p, vec2f(127.1, 311.7)),
+        dot(p, vec2f(269.5, 183.3))
+    );
+    return -1.0 + 2.0 * fract(sin(p2) * 43758.5453123);
 }
 
-// Fractal Brownian Motion (FBM) - layers multiple octaves of noise
-// Creates complex patterns by summing noise at different scales and amplitudes
+// Simplex noise function
+fn noise(p: vec2f) -> f32 {
+    const K1 = 0.366025404; // (sqrt(3)-1)/2
+    const K2 = 0.211324865; // (3-sqrt(3))/6
+    
+    let i = floor(p + (p.x + p.y) * K1);
+    let a = p - i + (i.x + i.y) * K2;
+    let o = select(vec2f(0.0, 1.0), vec2f(1.0, 0.0), a.x > a.y);
+    let b = a - o + K2;
+    let c = a - 1.0 + 2.0 * K2;
+    let h = max(0.5 - vec3f(dot(a, a), dot(b, b), dot(c, c)), vec3f(0.0));
+    let n = h * h * h * h * vec3f(dot(a, hash(i + 0.0)), dot(b, hash(i + o)), dot(c, hash(i + 1.0)));
+    
+    return dot(n, vec3f(70.0));
+}
+
+// Fractal Brownian Motion
 fn fbm(n: vec2f, aspect: f32) -> f32 {
     var total = 0.0;
-    var amplitude = aspect * 0.5;  // Initial amplitude based on aspect ratio
-    var vn = n;
-    // Sum 5 octaves of noise with increasing frequency and decreasing amplitude
-    for (var i : i32 = 0; i < 5; i++) {
-        total += noise(vn) * amplitude;
-        vn += vn * 1.7;        // Increase frequency
-        amplitude *= 0.5;       // Decrease amplitude
+    var p = n;
+    var amplitude = aspect * 0.5;
+    
+    // Rotation matrix for fbm layers
+    let m = mat2x2f(1.6, 1.2, -1.2, 1.6);
+    
+    for (var i = 0; i < 4; i++) {
+        total += noise(p) * amplitude;
+        p = m * p;
+        amplitude *= 0.5;
     }
-    return total;
+    
+    return total * 0.5 + 0.5;
 }
 
 // Fragment shader - generates the fire effect for each pixel
+// Based on Shadertoy fire shader by @301z
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    // Fire color palette - various shades from dark red to bright yellow
-    const c1 = vec3f(0.5, 0.0, 0.1);   // Dark red
-    const c2 = vec3f(0.9, 0.1, 0.0);   // Bright red
-    const c3 = vec3f(0.2, 0.1, 0.7);   // Purple (for depth)
-    const c4 = vec3f(1.0, 0.9, 0.1);   // Yellow (hot flames)
-    const c5 = vec3f(0.1);              // Dark
-    const c6 = vec3f(0.9);              // Bright
-
-    // Use clip position (screen coordinates) for the fire effect
-    // For a fullscreen quad, this gives us proper pixel coordinates
-    let fragCoord = in.clip_position.xy;
-    let iResolution = vec2f(800.0, 600.0);  // Virtual resolution for effect
-    let aspect = iResolution.x / iResolution.y;
+    // Screen resolution
+    let iResolution = vec2f(800.0, 600.0);
+    let iTime = in.world_position.x;
     
-    // Animate based on world position Y (which changes with model matrix)
-    // For background quad, add time-based animation
-    let iTime = in.world_position.x * 5.0 + in.world_position.y * 3.0;
+    // Get fragment coordinates
+    let fragCoord = vec2f(in.clip_position.x, iResolution.y - in.clip_position.y);
     
-    const speed = vec2f(0.0, 1.0);
-    var shift = 1.327 + sin(iTime * 2.0) / 2.4;  // Color shift oscillation
-    const alpha = 1.0;
+    // Normalize coordinates
+    var uv = fragCoord / iResolution.xy;
     
-    // Distance distortion that oscillates over time
-    var dist = 3.5 - sin(iTime * 2.0) / 2.4;
+    // Movement vectors for distortion and fire
+    let distortionMovement = vec2f(0.01, -0.3);
+    let fireMovement = vec2f(0.01, -0.5);
     
-    // Calculate UV coordinates
-    var uv = fragCoord.xy / iResolution.xy;
-    var p = fragCoord.xy * dist / iResolution.xx;
+    // Parameters
+    let normalStrength = 40.0;
+    let distortionStrength = 0.1;
     
-    // Add turbulence - small wiggles that create realistic fire movement
-    p += sin(p.yx * 4.0 + vec2f(0.2, -0.3) * iTime) * 0.04;
-    p += sin(p.yx * 8.0 + vec2f(0.5, 0.1) * iTime) * 0.01;
+    // Calculate bump map (normal) for creating displacement
+    let uvT = vec2f(uv.x * 0.6, uv.y * 0.3) + distortionMovement * iTime;
+    let s = 1.0 / iResolution.x;
     
-    // Scroll the pattern horizontally
-    p.x -= iTime / 1.1;
+    let n0 = fbm(uvT, 1.0);
+    let n1 = fbm(uvT + vec2f(s, 0.0), 1.0);
+    let n2 = fbm(uvT + vec2f(0.0, s), 1.0);
     
-    // Generate multiple layers of FBM with different time offsets and frequencies
-    // This creates the complex, turbulent appearance of fire
-    var q = fbm(p - iTime * 0.3 + 1.0 * sin(iTime + 0.5) / 2.0, aspect);
-    var qb = fbm(p - iTime * 0.4 + 0.1 * cos(iTime) / 2.0, aspect);
-    var q2 = fbm(p - iTime * 0.44 - 5.0 * cos(iTime) / 2.0, aspect) - 6.0;
-    var q3 = fbm(p - iTime * 0.9 - 10.0 * cos(iTime) / 15.0, aspect) - 4.0;
-    var q4 = fbm(p - iTime * 1.4 - 20.0 * sin(iTime) / 14.0, aspect) + 2.0;
+    // Calculate normal
+    var normal = vec3f(0.0);
+    normal.x = (n0 - n1) * normalStrength;
+    normal.y = (n0 - n2) * normalStrength;
+    normal.z = 1.0;
+    normal = normalize(normal);
     
-    // Combine FBM layers with different weights to create depth
-    q = (q + qb - 0.4 * q2 - 2.0 * q3 + 0.6 * q4) / 3.8;
+    // Create displacement from normal
+    let displacement = clamp(
+        normal.xy * distortionStrength,
+        vec2f(-1.0),
+        vec2f(1.0)
+    );
     
-    // Generate another layer of FBM using the previous result as domain distortion
-    var r = vec2f(fbm(p + q / 2.0 + iTime * speed.x - p.x - p.y, aspect), 
-                  fbm(p + q - iTime * speed.y, aspect));
+    // Apply displacement and fire movement
+    let uvT2 = vec2f(uv.x * 0.6, uv.y * 0.5) + displacement + fireMovement * iTime;
     
-    // Mix colors based on FBM values to create fire gradient
-    var c = mix(c1, c2, fbm(p + r, aspect)) + mix(c3, c4, r.x) - mix(c5, c6, r.y);
+    // Get fire noise
+    let n = fbm(uvT2 * 8.0, 1.0);
     
-    // Apply intensity falloff and color correction
-    var color = vec3(1.0 / pow(c + 1.61, vec3f(4.0))) * cos(shift * fragCoord.y / iResolution.y);
+    // Create vertical gradient - stronger at bottom
+    let gradientPower = 5.0 * pow(1.0 - uv.y, 2.0);
     
-    // Final fire color - bright orange/yellow in hottest areas
-    // Using the FBM result and vertical position to create upward-flowing flames
-    color = vec3f(1.0, 0.2, 0.05) / (pow((r.y + r.y) * max(0.0, p.y) + 0.1, 4.0));
+    // Final noise combined with gradient
+    let finalNoise = n * gradientPower;
     
-    // Tone mapping to prevent oversaturation
-    color = color / (1.0 + max(vec3f(0.0), color));
+    // Create fire color - red strongest, then green, then blue
+    var color = vec3f(0.0);
+    let n2 = n * n;
+    let n4 = n2 * n2;
+    let n6 = n4 * n2;
+    color = finalNoise * vec3f(2.0 * n2, 2.0 * n4, n6);
     
-    return vec4f(color.x, color.y, color.z, alpha);
+    // Clamp and boost
+    color = clamp(color * 1.5, vec3f(0.0), vec3f(1.0));
+    
+    // Alpha based on fire intensity
+    let alpha = clamp(finalNoise * 1.2, 0.0, 0.9);
+    
+    return vec4f(color, alpha);
 }

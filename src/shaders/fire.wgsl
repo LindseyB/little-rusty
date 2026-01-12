@@ -144,7 +144,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     
     // Create fire color - red strongest, then green, then blue
     var color = vec3f(0.0);
-    color = finalNoise * vec3f(2.0 * n * n, 2.0 * n * n * n * n, n * n * n * n * n * n);
+    let n2 = n * n;
+    let n4 = n2 * n2;
+    let n6 = n4 * n2;
+    color = finalNoise * vec3f(2.0 * n2, 2.0 * n4, n6);
     
     // Clamp and boost
     color = clamp(color * 1.5, vec3f(0.0), vec3f(1.0));

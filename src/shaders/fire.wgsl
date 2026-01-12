@@ -125,7 +125,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     
     // Create displacement from normal
     let displacement = clamp(
-        (normal.xy - 0.5) * distortionStrength,
+        normal.xy * distortionStrength,
         vec2f(-1.0),
         vec2f(1.0)
     );

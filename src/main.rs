@@ -2,13 +2,16 @@ mod types;
 mod gltf_loader;
 mod input;
 mod audio;
+mod particles;
 
 use std::sync::Arc;
 use types::{Vertex, Uniforms};
+use particles::ParticleSystem;
 use gltf_loader::GltfLoader;
 use input::InputHandler;
 use audio::AudioSystem;
 use glam::{Mat4, Vec3};
+use rand::Rng;
 use wgpu::util::DeviceExt;
 
 use winit::{
@@ -43,6 +46,8 @@ struct State {
     base_color: [f32; 4],
     start_time: std::time::Instant,
     audio_system: AudioSystem,
+    // Particle system
+    particle_system: ParticleSystem,
 }
 
 impl State {
@@ -71,122 +76,70 @@ impl State {
 
         // Initialize audio system 🎵
         let mut audio_system = AudioSystem::new().expect("Failed to initialize audio system");
-        
-        // Set volume first
         audio_system.set_volume(0.3); // 30% volume
 
         // Load glTF file 
         let (vertices, indices, base_color) = GltfLoader::load_gltf("assets/9-5_mailbox/9-5_mailbox.gltf");
-        
-        // Create vertex buffer
+
+        // Create vertex/index buffers
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Vertex Buffer"),
             contents: bytemuck::cast_slice(&vertices),
             usage: wgpu::BufferUsages::VERTEX,
         });
-        
-        // Create index buffer  
         let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Index Buffer"),
             contents: bytemuck::cast_slice(&indices),
             usage: wgpu::BufferUsages::INDEX,
         });
-        
         let num_indices = indices.len() as u32;
-        
-        // Create uniform buffer
+
+        // Create uniform buffer and bind group
         let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Uniform Buffer"),
             size: std::mem::size_of::<Uniforms>() as u64,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        
-        // Create bind group layout
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             entries: &[wgpu::BindGroupLayoutEntry {
                 binding: 0,
                 visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
+                ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None },
                 count: None,
             }],
             label: Some("uniform_bind_group_layout"),
         });
-        
-        // Create bind group
         let uniform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout: &bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: uniform_buffer.as_entire_binding(),
-            }],
+            entries: &[wgpu::BindGroupEntry { binding: 0, resource: uniform_buffer.as_entire_binding() }],
             label: Some("uniform_bind_group"),
         });
-        
-        // Load shader for model (solid lambert)
+
+        // Load shaders
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Solid Lambert Shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shaders/solid_lambert.wgsl").into()),
         });
-        
-        // Load fire shader for background
         let fire_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Fire Shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shaders/fire.wgsl").into()),
         });
-        
-        // Create render pipeline layout
+
+        // Create render pipeline layout and pipeline
         let render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Render Pipeline Layout"),
             bind_group_layouts: &[&bind_group_layout],
             immediate_size: 0,
         });
-        
-        // Create render pipeline for solid rendering
         let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Solid Render Pipeline"),
             layout: Some(&render_pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                buffers: &[Vertex::desc()],
-                compilation_options: Default::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: surface_format,
-                    blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: Default::default(),
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: None,
-                polygon_mode: wgpu::PolygonMode::Fill,
-                unclipped_depth: false,
-                conservative: false,
-            },
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: wgpu::TextureFormat::Depth32Float,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::Less,
-                stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState::default(),
-            }),
-            multisample: wgpu::MultisampleState {
-                count: 1,
-                mask: !0,
-                alpha_to_coverage_enabled: false,
-            },
+            vertex: wgpu::VertexState { module: &shader, entry_point: Some("vs_main"), buffers: &[Vertex::desc()], compilation_options: Default::default() },
+            fragment: Some(wgpu::FragmentState { module: &shader, entry_point: Some("fs_main"), targets: &[Some(wgpu::ColorTargetState { format: surface_format, blend: Some(wgpu::BlendState::REPLACE), write_mask: wgpu::ColorWrites::ALL })], compilation_options: Default::default() }),
+            primitive: wgpu::PrimitiveState { topology: wgpu::PrimitiveTopology::TriangleList, strip_index_format: None, front_face: wgpu::FrontFace::Ccw, cull_mode: None, polygon_mode: wgpu::PolygonMode::Fill, unclipped_depth: false, conservative: false },
+            depth_stencil: Some(wgpu::DepthStencilState { format: wgpu::TextureFormat::Depth32Float, depth_write_enabled: true, depth_compare: wgpu::CompareFunction::Less, stencil: wgpu::StencilState::default(), bias: wgpu::DepthBiasState::default() }),
+            multisample: wgpu::MultisampleState { count: 1, mask: !0, alpha_to_coverage_enabled: false },
             multiview_mask: Default::default(),
             cache: None,
         });
@@ -271,6 +224,9 @@ impl State {
             cache: None,
         });
 
+        // Initialize particle system
+        let particle_system = ParticleSystem::new(&device, surface_format, &bind_group_layout);
+
         let state = State {
             window,
             device,
@@ -293,6 +249,7 @@ impl State {
             base_color,
             start_time: std::time::Instant::now(),
             audio_system,
+            particle_system,
         };
 
         // Configure surface for the first time
@@ -367,7 +324,13 @@ impl State {
         self.configure_surface();
     }
 
+    // Particle update now handled by ParticleSystem
+
     fn render(&mut self) {
+        // Update particles
+        let dt = 1.0 / 60.0;
+        let time = self.start_time.elapsed().as_secs_f32();
+        self.particle_system.update(dt, time);
         // Update rotation for animation
         self.rotation.0 += 0.01; // Rotate around X axis
         self.rotation.1 += 0.01; // Rotate around Y axis
@@ -505,6 +468,17 @@ impl State {
             render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
             render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
         }
+
+        // Third pass: Render fire particles
+        let aspect = self.size.width as f32 / self.size.height as f32;
+        let projection = Mat4::perspective_rh(45.0_f32.to_radians(), aspect, 0.1, 2000.0);
+        let view = Mat4::look_at_rh(
+            Vec3::new(0.0, 0.0, 800.0),
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::new(0.0, 1.0, 0.0),
+        );
+        let time = self.start_time.elapsed().as_secs_f32();
+        self.particle_system.render(&self.queue, &mut encoder, &texture_view, &depth_view, projection, view, time);
 
         self.queue.submit([encoder.finish()]);
         self.window.pre_present_notify();

@@ -101,15 +101,15 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var uv = fragCoord / iResolution.xy;
     
     // Movement vectors for distortion and fire
-    let distortionMovement = vec2f(0.01, -0.3);
-    let fireMovement = vec2f(0.01, -0.5);
+    let distortionMovement = vec2f(0.0, -0.3);
+    let fireMovement = vec2f(0.0, -0.5);
     
     // Parameters
     let normalStrength = 40.0;
     let distortionStrength = 0.1;
     
     // Calculate bump map (normal) for creating displacement
-    let uvT = vec2f(uv.x * 0.6, uv.y * 0.3) + distortionMovement * iTime;
+    let uvT = vec2f(uv.x * -0.6, uv.y * 0.3) + distortionMovement * iTime;
     let s = 1.0 / iResolution.x;
     
     let n0 = fbm(uvT, 1.0);
@@ -131,13 +131,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     );
     
     // Apply displacement and fire movement
-    let uvT2 = vec2f(uv.x * 0.6, uv.y * 0.5) + displacement + fireMovement * iTime;
+    let uvT2 = vec2f(uv.x, uv.y * 0.5) + displacement + fireMovement * iTime;
     
     // Get fire noise
-    let n = fbm(uvT2 * 8.0, 1.0);
+    let n = fbm(uvT2 * 11.0, 1.0);
     
     // Create vertical gradient - stronger at bottom
-    let gradientPower = 5.0 * pow(1.0 - uv.y, 2.0);
+    let gradientPower = 8.0 * pow(1.0 - uv.y, 3.5);
     
     // Final noise combined with gradient
     let finalNoise = n * gradientPower;
